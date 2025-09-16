@@ -8,6 +8,13 @@ const Index = () => {
   const navigate = useNavigate();
   const [showLanding, setShowLanding] = useState(true);
 
+  // Redirect authenticated users to dashboard
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    }
+  }, [isAuthenticated, navigate]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 to-success/5">
@@ -20,13 +27,6 @@ const Index = () => {
       </div>
     );
   }
-
-  // Redirect authenticated users to dashboard
-  useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/dashboard');
-    }
-  }, [isAuthenticated, navigate]);
 
   // Show enhanced landing page first, then auth
   if (showLanding && !isAuthenticated) {

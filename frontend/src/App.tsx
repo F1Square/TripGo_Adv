@@ -7,7 +7,6 @@ import Index from "./pages/Index";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import Dashboard from "./components/Dashboard";
-import TestDashboard from "./components/TestDashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 import NotFound from "./pages/NotFound";
 
@@ -27,7 +26,7 @@ const App = () => (
             path="/dashboard" 
             element={
               <ProtectedRoute>
-                <TestDashboard />
+                <Dashboard />
               </ProtectedRoute>
             } 
           />
