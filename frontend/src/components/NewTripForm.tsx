@@ -35,6 +35,15 @@ const NewTripForm: React.FC<NewTripFormProps> = ({ currentOdometer }) => {
       return;
     }
 
+    if (formData.purpose.trim().length < 3) {
+      toast({
+        title: "Purpose too short",
+        description: "Trip purpose must be at least 3 characters long",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const odometerValue = Number(formData.startOdometer);
     if (isNaN(odometerValue) || odometerValue < 0) {
       toast({

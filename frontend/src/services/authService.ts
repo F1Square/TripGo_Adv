@@ -55,7 +55,7 @@ class AuthService {
 
   // Get current user profile
   async getCurrentUser() {
-    return await apiService.get<User>('/auth/profile');
+    return await apiService.get<User>('/auth/me');
   }
 
   // Logout user (clear local storage)

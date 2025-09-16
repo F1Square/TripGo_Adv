@@ -186,6 +186,19 @@ export const useTrip = () => {
         isLoading: false,
       }));
 
+      // Refresh trip history to get updated data
+      try {
+        const tripsResponse = await tripService.getAllTrips();
+        if (tripsResponse.success && tripsResponse.data) {
+          setState(prev => ({ 
+            ...prev, 
+            tripHistory: tripsResponse.data.data || [] 
+          }));
+        }
+      } catch (error) {
+        console.warn('Failed to refresh trip history after starting trip:', error);
+      }
+
       startTracking();
 
       // Request wake lock to keep screen active during trip

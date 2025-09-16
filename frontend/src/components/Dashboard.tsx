@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Car, 
   MapPin, 
@@ -12,20 +15,26 @@ import {
   LogOut, 
   Play, 
   History,
-  Settings
+  Settings,
+  ChevronDown
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useTrip } from '@/hooks/useTrip';
+import { useToast } from '@/hooks/use-toast';
 import NewTripForm from './NewTripForm';
 import ActiveTrip from './ActiveTrip';
 import TripHistory from './TripHistory';
+import UserProfile from './UserProfile';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const { currentTrip, isActive, tripHistory } = useTrip();
+  const navigate = useNavigate();
+  const { toast } = useToast();
   const [currentOdometer, setCurrentOdometer] = useState(
     localStorage.getItem('trip_tracker_odometer') || '50000'
   );
+  const [showProfile, setShowProfile] = useState(false);
 
   const updateOdometer = (value: string) => {
     setCurrentOdometer(value);
@@ -34,6 +43,11 @@ const Dashboard = () => {
 
   const handleLogout = () => {
     logout();
+    toast({
+      title: "Logged out",
+      description: "You have been successfully logged out",
+    });
+    navigate('/');
   };
 
   return (
@@ -53,18 +67,29 @@ const Dashboard = () => {
             </div>
             
             <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2 bg-muted/50 rounded-lg px-3 py-2">
-                <User className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-medium">{user?.name}</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleLogout}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <LogOut className="w-4 h-4" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    className="flex items-center space-x-2 bg-muted/50 rounded-lg px-3 py-2 h-auto hover:bg-muted"
+                  >
+                    <User className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{user?.name}</span>
+                    <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={() => setShowProfile(true)}>
+                    <User className="w-4 h-4 mr-2" />
+                    View Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>
@@ -163,39 +188,52 @@ const Dashboard = () => {
           </Card>
         </div>
 
-        {/* Main Content */}
-        {isActive ? (
-          <ActiveTrip />
-        ) : (
-          <Card className="glass-card">
-            <Tabs defaultValue="new-trip" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-muted/30">
-                <TabsTrigger 
-                  value="new-trip" 
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center space-x-2"
-                >
-                  <Play className="w-4 h-4" />
-                  <span>New Trip</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="history" 
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center space-x-2"
-                >
-                  <History className="w-4 h-4" />
-                  <span>History</span>
-                </TabsTrigger>
-              </TabsList>
+        {/* Active Trip Section */}
+        {isActive && <ActiveTrip />}
 
-              <TabsContent value="new-trip" className="mt-6">
-                <NewTripForm currentOdometer={Number(currentOdometer)} />
-              </TabsContent>
+        {/* Main Content - Always Show Tabs */}
+        <Card className="glass-card">
+          <Tabs defaultValue={isActive ? "history" : "new-trip"} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 bg-muted/30">
+              <TabsTrigger 
+                value="new-trip" 
+                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center space-x-2"
+                disabled={isActive}
+              >
+                <Play className="w-4 h-4" />
+                <span>New Trip</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="history" 
+                className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center space-x-2"
+              >
+                <History className="w-4 h-4" />
+                <span>History</span>
+              </TabsTrigger>
+            </TabsList>
 
-              <TabsContent value="history" className="mt-6">
-                <TripHistory />
-              </TabsContent>
-            </Tabs>
-          </Card>
-        )}
+            <TabsContent value="new-trip" className="mt-6">
+              {!isActive && <NewTripForm currentOdometer={Number(currentOdometer)} />}
+            </TabsContent>
+
+            <TabsContent value="history" className="mt-6">
+              <TripHistory />
+            </TabsContent>
+          </Tabs>
+        </Card>
+
+        {/* Profile Dialog Modal */}
+        <Dialog open={showProfile} onOpenChange={setShowProfile}>
+          <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center space-x-2">
+                <User className="w-5 h-5 text-primary" />
+                <span>User Profile</span>
+              </DialogTitle>
+            </DialogHeader>
+            <UserProfile />
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
