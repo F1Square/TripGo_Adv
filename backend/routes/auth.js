@@ -1,8 +1,11 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const UserData = require('../models/UserData');
 const { protect } = require('../middleware/auth');
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const router = express.Router();
 
@@ -135,6 +138,78 @@ const login = async (req, res) => {
   }
 };
 
+// @desc    Google authentication
+// @route   POST /api/auth/google
+// @access  Public
+const googleAuth = async (req, res) => {
+  try {
+    const { credential } = req.body;
+
+    // Verify the Google ID token
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name, picture, sub: googleId } = payload;
+
+    // Check if user exists
+    let user = await User.findOne({ email: email.toLowerCase() });
+
+    if (user) {
+      // User exists, update Google ID if not present
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.profilePicture = picture;
+        await user.save();
+      }
+    } else {
+      // Create new user
+      user = await User.create({
+        fullName: name,
+        email: email.toLowerCase(),
+        googleId: googleId,
+        profilePicture: picture,
+        // Generate a random password for Google users (not used)
+        password: Math.random().toString(36).substring(7) + Math.random().toString(36).substring(7)
+      });
+
+      // Create UserData profile for new user
+      await UserData.create({
+        userId: user._id,
+        preferences: {
+          theme: 'light',
+          notifications: true,
+          units: 'metric'
+        }
+      });
+    }
+
+    // Generate token
+    const token = generateToken(user._id);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        token,
+        user: {
+          id: user._id,
+          name: user.fullName,
+          email: user.email
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Google auth error:', error);
+    res.status(400).json({
+      success: false,
+      error: 'Google authentication failed'
+    });
+  }
+};
+
 // @desc    Get current user
 // @route   GET /api/auth/me
 // @access  Private
@@ -162,6 +237,7 @@ const getMe = async (req, res) => {
 // Routes
 router.post('/register', register);
 router.post('/login', login);
+router.post('/google', googleAuth);
 router.get('/me', protect, getMe);
 
 module.exports = router;

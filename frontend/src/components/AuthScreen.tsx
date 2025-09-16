@@ -4,13 +4,23 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
 import { MapPin, Car, TrendingUp } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
+import GoogleSignIn from './GoogleSignIn';
+import DebugInfo from './DebugInfo';
 
 const AuthScreen = () => {
+  console.log('🔍 AuthScreen component rendered');
+  console.log('🔍 Environment variables check:', {
+    VITE_GOOGLE_CLIENT_ID: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+    NODE_ENV: import.meta.env.NODE_ENV,
+    MODE: import.meta.env.MODE
+  });
+  
   const [isLoading, setIsLoading] = useState(false);
-  const { login, register } = useAuth();
+  const { login, register, googleLogin } = useAuth();
   const { toast } = useToast();
 
   const [loginForm, setLoginForm] = useState({
@@ -93,8 +103,50 @@ const AuthScreen = () => {
     }
   };
 
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    console.log('🎉 Google Success callback triggered:', credentialResponse);
+    setIsLoading(true);
+    
+    try {
+      const result = await googleLogin(credentialResponse.credential);
+      if (result.success) {
+        console.log('✅ Google login successful');
+        toast({
+          title: "Welcome!",
+          description: "You've been successfully signed in with Google.",
+        });
+      } else {
+        console.log('❌ Google login failed:', result.error);
+        toast({
+          title: "Google authentication failed",
+          description: result.error || "Failed to authenticate with Google",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.log('💥 Google login error:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred during Google authentication",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    console.log('❌ Google Error callback triggered');
+    toast({
+      title: "Authentication cancelled",
+      description: "Google sign-in was cancelled or failed",
+      variant: "destructive",
+    });
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-primary/10 to-success/5">
+      <DebugInfo />
       <div className="w-full max-w-md space-y-8">
         {/* Header */}
         <div className="text-center space-y-4">
@@ -185,6 +237,27 @@ const AuthScreen = () => {
                     {isLoading ? 'Signing in...' : 'Sign In'}
                   </Button>
                 </form>
+                
+                <div className="space-y-4">
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <Separator className="w-full" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+                    </div>
+                  </div>
+                  
+                  <div style={{border: '2px solid green', padding: '5px', margin: '5px'}}>
+                    <div>🎯 Sign In - About to render GoogleSignIn</div>
+                    <GoogleSignIn
+                      onSuccess={handleGoogleSuccess}
+                      onError={handleGoogleError}
+                      text="signin_with"
+                      className="w-full"
+                    />
+                  </div>
+                </div>
               </CardContent>
             </TabsContent>
 
@@ -252,6 +325,27 @@ const AuthScreen = () => {
                     {isLoading ? 'Creating account...' : 'Create Account'}
                   </Button>
                 </form>
+                
+                <div className="space-y-4">
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <Separator className="w-full" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+                    </div>
+                  </div>
+                  
+                  <div style={{border: '2px solid purple', padding: '5px', margin: '5px'}}>
+                    <div>🎯 Sign Up - About to render GoogleSignIn</div>
+                    <GoogleSignIn
+                      onSuccess={handleGoogleSuccess}
+                      onError={handleGoogleError}
+                      text="signup_with"
+                      className="w-full"
+                    />
+                  </div>
+                </div>
               </CardContent>
             </TabsContent>
           </Tabs>

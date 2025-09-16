@@ -26,6 +26,11 @@ export interface RegisterRequest {
   password: string;
 }
 
+// Google authentication request interface
+export interface GoogleAuthRequest {
+  credential: string;
+}
+
 class AuthService {
   // Login user
   async login(email: string, password: string) {
@@ -43,6 +48,19 @@ class AuthService {
   // Register user
   async register(name: string, email: string, password: string) {
     const result = await apiService.post<AuthResponse>('/auth/register', { name, email, password });
+    
+    if (result.success && result.data) {
+      // Store token and user data
+      localStorage.setItem('trip_tracker_token', result.data.token);
+      localStorage.setItem('trip_tracker_user', JSON.stringify(result.data.user));
+    }
+    
+    return result;
+  }
+
+  // Google Sign-In/Sign-Up
+  async googleAuth(credential: string) {
+    const result = await apiService.post<AuthResponse>('/auth/google', { credential });
     
     if (result.success && result.data) {
       // Store token and user data

@@ -77,6 +77,28 @@ export const useAuth = () => {
     }
   };
 
+  const googleLogin = async (credential: string) => {
+    try {
+      const result = await authService.googleAuth(credential);
+      
+      if (result.success && result.data) {
+        setAuth({
+          user: result.data.user,
+          isAuthenticated: true,
+          isLoading: false,
+        });
+        // Preload critical components for authenticated users
+        preloadCriticalComponents();
+        return { success: true };
+      }
+      
+      return { success: false, error: result.error || 'Google authentication failed' };
+    } catch (error) {
+      console.error('Google authentication error:', error);
+      return { success: false, error: 'Google authentication failed' };
+    }
+  };
+
   const logout = () => {
     authService.logout();
     setAuth({
@@ -90,6 +112,7 @@ export const useAuth = () => {
     ...auth,
     login,
     register,
+    googleLogin,
     logout,
   };
 };
