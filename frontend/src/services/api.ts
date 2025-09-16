@@ -23,7 +23,9 @@ class ApiService {
   }
 
   private getAuthToken(): string | null {
-    return localStorage.getItem('trip_tracker_token');
+    const token = localStorage.getItem('trip_tracker_token');
+    console.log('Getting auth token:', token ? 'Token found' : 'No token found');
+    return token;
   }
 
   private async request<T>(endpoint: string, config: RequestConfig = { method: 'GET' }): Promise<ApiResponse<T>> {
@@ -39,7 +41,13 @@ class ApiService {
       // Add authorization header if token exists
       if (token) {
         headers.Authorization = `Bearer ${token}`;
+        console.log('Adding Authorization header');
+      } else {
+        console.log('No token available - request will be unauthorized');
       }
+
+      console.log('Request headers:', headers);
+      console.log('Request URL:', url);
 
       const requestConfig: RequestInit = {
         method: config.method,
