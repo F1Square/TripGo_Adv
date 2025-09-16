@@ -1,33 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useGeolocation } from './useGeolocation';
+import { tripService, Trip, TripPoint } from '../services/tripService';
 
-interface TripPoint {
-  latitude: number;
-  longitude: number;
-  timestamp: number;
-  accuracy: number;
-}
-
-interface Trip {
-  id: string;
-  purpose: string;
-  startDate: string;
-  endDate?: string;
-  startOdometer: number;
-  endOdometer?: number;
-  startLocation?: string;
-  endLocation?: string;
-  distance: number;
-  duration: number; // in seconds
-  route: TripPoint[];
-  status: 'active' | 'completed';
-  averageSpeed: number;
-}
+// Import wake lock types
+/// <reference path="../types/wakelock.d.ts" />
 
 interface TripState {
   currentTrip: Trip | null;
   tripHistory: Trip[];
   isActive: boolean;
+  isLoading: boolean;
 }
 
 export const useTrip = () => {
@@ -35,37 +17,84 @@ export const useTrip = () => {
     currentTrip: null,
     tripHistory: [],
     isActive: false,
+    isLoading: false,
   });
 
   const { position, startTracking, stopTracking, getCurrentPosition } = useGeolocation();
+  
+  // Wake Lock API for keeping screen active during trips
+  const [wakeLock, setWakeLock] = useState<WakeLockSentinel | null>(null);
 
-  // Load trip data from localStorage on mount
+  // Handle page visibility changes to maintain tracking in background
   useEffect(() => {
-    const savedTrips = localStorage.getItem('trip_tracker_trips');
-    const currentTrip = localStorage.getItem('trip_tracker_current_trip');
-    
-    if (savedTrips) {
-      try {
-        const trips = JSON.parse(savedTrips);
-        setState(prev => ({ ...prev, tripHistory: trips }));
-      } catch (error) {
-        console.error('Failed to load trip history:', error);
+    const handleVisibilityChange = () => {
+      if (state.isActive) {
+        if (document.visibilityState === 'hidden') {
+          // App going to background - ensure tracking continues
+          console.log('App backgrounded - maintaining GPS tracking');
+        } else if (document.visibilityState === 'visible') {
+          // App coming to foreground - refresh current position
+          console.log('App foregrounded - refreshing position');
+          if (state.isActive) {
+            getCurrentPosition().catch(error => {
+              console.warn('Failed to refresh position on foreground:', error);
+            });
+          }
+        }
       }
-    }
+    };
 
-    if (currentTrip) {
-      try {
-        const trip = JSON.parse(currentTrip);
-        setState(prev => ({ ...prev, currentTrip: trip, isActive: true }));
-        startTracking(); // Resume tracking if there's an active trip
-      } catch (error) {
-        console.error('Failed to load current trip:', error);
-        localStorage.removeItem('trip_tracker_current_trip');
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [state.isActive, getCurrentPosition]);
+
+  // Cleanup wake lock on unmount
+  useEffect(() => {
+    return () => {
+      if (wakeLock) {
+        wakeLock.release().catch(error => {
+          console.warn('Failed to release wake lock on cleanup:', error);
+        });
       }
-    }
+    };
+  }, [wakeLock]);
+
+  // Load trip data from MongoDB on mount
+  useEffect(() => {
+    const loadTripsFromDB = async () => {
+      setState(prev => ({ ...prev, isLoading: true }));
+      
+      try {
+        // Load trip history
+        const tripsResponse = await tripService.getAllTrips();
+        if (tripsResponse.success && tripsResponse.data) {
+          setState(prev => ({ 
+            ...prev, 
+            tripHistory: tripsResponse.data.data || [] 
+          }));
+        }
+
+        // Check for active trip
+        const activeResponse = await tripService.getActiveTrip();
+        if (activeResponse.success && activeResponse.data) {
+          setState(prev => ({ 
+            ...prev, 
+            currentTrip: activeResponse.data, 
+            isActive: true 
+          }));
+          startTracking(); // Resume tracking if there's an active trip
+        }
+      } catch (error) {
+        console.error('Failed to load trips from database:', error);
+      } finally {
+        setState(prev => ({ ...prev, isLoading: false }));
+      }
+    };
+
+    loadTripsFromDB();
   }, [startTracking]);
 
-  // Update current trip with new position data
+  // Update current trip with new position data (save to MongoDB)
   useEffect(() => {
     if (state.isActive && state.currentTrip && position) {
       const newPoint: TripPoint = {
@@ -78,9 +107,29 @@ export const useTrip = () => {
       setState(prev => {
         if (!prev.currentTrip) return prev;
 
-        const updatedRoute = [...prev.currentTrip.route, newPoint];
+        const currentRoute = prev.currentTrip.route;
+        
+        // Only add point if it's significantly different from last point
+        const lastPoint = currentRoute[currentRoute.length - 1];
+        if (lastPoint) {
+          const timeDiff = (newPoint.timestamp - lastPoint.timestamp) / 1000;
+          const distance = haversineDistance(lastPoint, newPoint);
+          
+          // Skip if point is too recent (< 3 seconds) and too close (< 3 meters)
+          if (timeDiff < 3 && distance < 0.003) {
+            return prev;
+          }
+          
+          // Skip if accuracy is too poor (> 50m) unless it's been a while since last update
+          if (newPoint.accuracy > 50 && timeDiff < 30) {
+            return prev;
+          }
+        }
+
+        const updatedRoute = [...currentRoute, newPoint];
         const distance = calculateDistance(updatedRoute);
-        const duration = Math.floor((Date.now() - new Date(prev.currentTrip.startDate).getTime()) / 1000);
+        const startTime = prev.currentTrip.startTime || prev.currentTrip.createdAt;
+        const duration = Math.floor((Date.now() - new Date(startTime).getTime()) / 1000);
         const averageSpeed = duration > 0 ? (distance / duration) * 3.6 : 0; // km/h
 
         const updatedTrip = {
@@ -91,8 +140,12 @@ export const useTrip = () => {
           averageSpeed,
         };
 
-        // Save to localStorage
-        localStorage.setItem('trip_tracker_current_trip', JSON.stringify(updatedTrip));
+        // Save to MongoDB every 10 GPS points to avoid too many requests
+        if (updatedRoute.length % 10 === 0) {
+          tripService.updateGPSPoints(prev.currentTrip._id, updatedRoute).catch(error => {
+            console.warn('Failed to update GPS points in database:', error);
+          });
+        }
 
         return {
           ...prev,
@@ -104,38 +157,54 @@ export const useTrip = () => {
 
   const startTrip = useCallback(async (purpose: string, startOdometer: number) => {
     try {
+      setState(prev => ({ ...prev, isLoading: true }));
+      
       const startPosition = await getCurrentPosition();
       
-      const newTrip: Trip = {
-        id: Date.now().toString(),
+      // Create trip in database
+      const createResponse = await tripService.createTrip({
         purpose,
-        startDate: new Date().toISOString(),
         startOdometer,
-        distance: 0,
-        duration: 0,
         route: [{
           latitude: startPosition.latitude,
           longitude: startPosition.longitude,
           timestamp: startPosition.timestamp,
           accuracy: startPosition.accuracy,
-        }],
-        status: 'active',
-        averageSpeed: 0,
-      };
+        }]
+      });
+
+      if (!createResponse.success || !createResponse.data) {
+        throw new Error(createResponse.error || 'Failed to create trip in database');
+      }
+
+      const newTrip = createResponse.data.data;
 
       setState(prev => ({
         ...prev,
         currentTrip: newTrip,
         isActive: true,
+        isLoading: false,
       }));
 
-      localStorage.setItem('trip_tracker_current_trip', JSON.stringify(newTrip));
       startTracking();
+
+      // Request wake lock to keep screen active during trip
+      try {
+        if ('wakeLock' in navigator && navigator.wakeLock) {
+          const wakeLockSentinel = await navigator.wakeLock.request('screen');
+          setWakeLock(wakeLockSentinel);
+          console.log('Wake lock activated for trip tracking');
+        }
+      } catch (wakeLockError) {
+        console.warn('Wake lock failed:', wakeLockError);
+        // Continue without wake lock - not critical
+      }
 
       return { success: true };
     } catch (error) {
       console.error('Failed to start trip:', error);
-      return { success: false, error: 'Failed to get location' };
+      setState(prev => ({ ...prev, isLoading: false }));
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to start trip' };
     }
   }, [getCurrentPosition, startTracking]);
 
@@ -143,63 +212,83 @@ export const useTrip = () => {
     if (!state.currentTrip) return { success: false, error: 'No active trip' };
 
     try {
+      setState(prev => ({ ...prev, isLoading: true }));
+      
       const endPosition = await getCurrentPosition();
       
-      const completedTrip: Trip = {
-        ...state.currentTrip,
-        endDate: new Date().toISOString(),
+      // Update trip in database with final GPS point and end it
+      const finalRoute = [...state.currentTrip.route, {
+        latitude: endPosition.latitude,
+        longitude: endPosition.longitude,
+        timestamp: endPosition.timestamp,
+        accuracy: endPosition.accuracy,
+      }];
+
+      // End trip in database
+      const endResponse = await tripService.endTrip(state.currentTrip._id, {
         endOdometer,
-        status: 'completed',
-        route: [...state.currentTrip.route, {
-          latitude: endPosition.latitude,
-          longitude: endPosition.longitude,
-          timestamp: endPosition.timestamp,
-          accuracy: endPosition.accuracy,
-        }],
-      };
+      });
 
-      // Calculate final distance
-      completedTrip.distance = calculateDistance(completedTrip.route);
-      completedTrip.duration = Math.floor((new Date(completedTrip.endDate!).getTime() - new Date(completedTrip.startDate).getTime()) / 1000);
-      completedTrip.averageSpeed = completedTrip.duration > 0 ? (completedTrip.distance / completedTrip.duration) * 3.6 : 0;
+      if (!endResponse.success || !endResponse.data) {
+        throw new Error(endResponse.error || 'Failed to end trip in database');
+      }
 
+      const completedTrip = endResponse.data.data;
+
+      // Update local state
       setState(prev => ({
         ...prev,
         currentTrip: null,
         isActive: false,
+        isLoading: false,
         tripHistory: [completedTrip, ...prev.tripHistory],
       }));
 
-      // Save to localStorage
-      const updatedHistory = [completedTrip, ...state.tripHistory];
-      localStorage.setItem('trip_tracker_trips', JSON.stringify(updatedHistory));
-      localStorage.removeItem('trip_tracker_current_trip');
-
       stopTracking();
+
+      // Release wake lock when trip ends
+      if (wakeLock) {
+        try {
+          await wakeLock.release();
+          setWakeLock(null);
+          console.log('Wake lock released after trip completion');
+        } catch (error) {
+          console.warn('Failed to release wake lock:', error);
+        }
+      }
 
       return { success: true, trip: completedTrip };
     } catch (error) {
       console.error('Failed to end trip:', error);
-      return { success: false, error: 'Failed to get location' };
+      setState(prev => ({ ...prev, isLoading: false }));
+      return { success: false, error: error instanceof Error ? error.message : 'Failed to end trip' };
     }
-  }, [state.currentTrip, state.tripHistory, getCurrentPosition, stopTracking]);
+  }, [state.currentTrip, getCurrentPosition, stopTracking, wakeLock]);
 
-  const deleteTrip = useCallback((tripId: string) => {
-    setState(prev => {
-      const updatedHistory = prev.tripHistory.filter(trip => trip.id !== tripId);
-      localStorage.setItem('trip_tracker_trips', JSON.stringify(updatedHistory));
-      return {
-        ...prev,
-        tripHistory: updatedHistory,
-      };
-    });
+  const deleteTrip = useCallback(async (tripId: string) => {
+    try {
+      const deleteResponse = await tripService.deleteTrip(tripId);
+      
+      if (deleteResponse.success) {
+        setState(prev => ({
+          ...prev,
+          tripHistory: prev.tripHistory.filter(trip => trip._id !== tripId),
+        }));
+        return { success: true };
+      } else {
+        return { success: false, error: deleteResponse.error };
+      }
+    } catch (error) {
+      console.error('Failed to delete trip:', error);
+      return { success: false, error: 'Failed to delete trip' };
+    }
   }, []);
 
   const exportTripsToCSV = useCallback(() => {
     const csvHeader = 'Date,Purpose,Start Odometer,End Odometer,Distance (km),Duration (hours),Average Speed (km/h),Start Location,End Location\n';
     
     const csvRows = state.tripHistory.map(trip => {
-      const date = new Date(trip.startDate).toLocaleDateString();
+      const date = new Date(trip.startTime || trip.createdAt).toLocaleDateString();
       const durationHours = (trip.duration / 3600).toFixed(2);
       const distance = trip.distance.toFixed(2);
       const avgSpeed = trip.averageSpeed.toFixed(1);
@@ -229,31 +318,63 @@ export const useTrip = () => {
   };
 };
 
-// Helper function to calculate distance between points using Haversine formula
+// These functions are no longer needed with MongoDB storage
+// The backend will handle data compression and storage optimization
+
+// Enhanced helper function to calculate distance with accuracy filtering
 function calculateDistance(route: TripPoint[]): number {
   if (route.length < 2) return 0;
 
   let totalDistance = 0;
+  let filteredRoute = filterAccuratePoints(route);
   
-  for (let i = 1; i < route.length; i++) {
-    const prev = route[i - 1];
-    const curr = route[i];
+  for (let i = 1; i < filteredRoute.length; i++) {
+    const prev = filteredRoute[i - 1];
+    const curr = filteredRoute[i];
     
-    const R = 6371; // Earth's radius in kilometers
-    const dLat = toRad(curr.latitude - prev.latitude);
-    const dLon = toRad(curr.longitude - prev.longitude);
+    // Skip points that are too close in time (< 5 seconds) to avoid GPS noise
+    const timeDiff = (curr.timestamp - prev.timestamp) / 1000;
+    if (timeDiff < 5) continue;
     
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(toRad(prev.latitude)) * Math.cos(toRad(curr.latitude)) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const distance = haversineDistance(prev, curr);
     
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
+    // Filter out unrealistic speeds (> 200 km/h for ground travel)
+    const speed = (distance / timeDiff) * 3.6; // km/h
+    if (speed > 200) continue;
     
     totalDistance += distance;
   }
   
   return totalDistance;
+}
+
+// Filter GPS points based on accuracy to improve distance calculation
+function filterAccuratePoints(route: TripPoint[]): TripPoint[] {
+  return route.filter(point => {
+    // Only use points with accuracy better than 50 meters
+    return point.accuracy <= 50;
+  }).filter((point, index, array) => {
+    if (index === 0) return true;
+    
+    // Remove points that are too close to the previous point (< 5 meters)
+    const prev = array[index - 1];
+    const distance = haversineDistance(prev, point);
+    return distance >= 0.005; // 5 meters minimum
+  });
+}
+
+// Pure Haversine distance calculation
+function haversineDistance(point1: TripPoint, point2: TripPoint): number {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = toRad(point2.latitude - point1.latitude);
+  const dLon = toRad(point2.longitude - point1.longitude);
+  
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(point1.latitude)) * Math.cos(toRad(point2.latitude)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 function toRad(degrees: number): number {

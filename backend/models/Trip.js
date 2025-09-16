@@ -37,18 +37,18 @@ const tripSchema = new mongoose.Schema({
     minlength: [3, 'Purpose must be at least 3 characters long'],
     maxlength: [200, 'Purpose cannot exceed 200 characters']
   },
-  startDate: {
+  startTime: {
     type: Date,
-    required: [true, 'Start date is required'],
+    required: [true, 'Start time is required'],
     default: Date.now
   },
-  endDate: {
+  endTime: {
     type: Date,
     validate: {
       validator: function(value) {
-        return !value || value > this.startDate;
+        return !value || value > this.startTime;
       },
-      message: 'End date must be after start date'
+      message: 'End time must be after start time'
     }
   },
   startOdometer: {
@@ -143,8 +143,8 @@ tripSchema.methods.calculateMetrics = function() {
   this.distance = totalDistance;
   
   // Calculate duration and average speed if trip is completed
-  if (this.endDate) {
-    this.duration = Math.floor((this.endDate.getTime() - this.startDate.getTime()) / 1000);
+  if (this.endTime) {
+    this.duration = Math.floor((this.endTime.getTime() - this.startTime.getTime()) / 1000);
     this.averageSpeed = this.duration > 0 ? (this.distance / this.duration) * 3.6 : 0; // km/h
   }
 };

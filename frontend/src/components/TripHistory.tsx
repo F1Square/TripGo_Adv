@@ -26,13 +26,22 @@ const TripHistory = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [tripToDelete, setTripToDelete] = useState<string | null>(null);
 
-  const handleDeleteTrip = (tripId: string) => {
-    deleteTrip(tripId);
+  const handleDeleteTrip = async (tripId: string) => {
+    const result = await deleteTrip(tripId);
     setTripToDelete(null);
-    toast({
-      title: "Trip deleted",
-      description: "The trip has been removed from your history",
-    });
+    
+    if (result.success) {
+      toast({
+        title: "Trip deleted",
+        description: "The trip has been removed from your history",
+      });
+    } else {
+      toast({
+        title: "Failed to delete trip",
+        description: result.error || "Please try again",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleExportCSV = () => {
@@ -133,7 +142,7 @@ const TripHistory = () => {
                         {trip.purpose}
                       </h3>
                       <Badge variant="secondary" className="text-xs">
-                        {format(new Date(trip.startDate), 'MMM dd, yyyy')}
+                        {format(new Date(trip.startTime || trip.createdAt), 'MMM dd, yyyy')}
                       </Badge>
                     </div>
                     
@@ -195,7 +204,7 @@ const TripHistory = () => {
               <DialogHeader>
                 <DialogTitle>Trip Details</DialogTitle>
                 <DialogDescription>
-                  Complete information for trip on {format(new Date(selectedTrip.startDate), 'MMMM dd, yyyy')}
+                  Complete information for trip on {format(new Date(selectedTrip.startTime || selectedTrip.createdAt), 'MMMM dd, yyyy')}
                 </DialogDescription>
               </DialogHeader>
               
@@ -213,19 +222,19 @@ const TripHistory = () => {
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Date:</span>
                           <span className="font-medium">
-                            {format(new Date(selectedTrip.startDate), 'MMM dd, yyyy')}
+                            {format(new Date(selectedTrip.startTime || selectedTrip.createdAt), 'MMM dd, yyyy')}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Start Time:</span>
                           <span className="font-medium">
-                            {format(new Date(selectedTrip.startDate), 'h:mm a')}
+                            {format(new Date(selectedTrip.startTime || selectedTrip.createdAt), 'h:mm a')}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">End Time:</span>
                           <span className="font-medium">
-                            {selectedTrip.endDate ? format(new Date(selectedTrip.endDate), 'h:mm a') : 'N/A'}
+                            {selectedTrip.endTime ? format(new Date(selectedTrip.endTime), 'h:mm a') : 'N/A'}
                           </span>
                         </div>
                       </div>

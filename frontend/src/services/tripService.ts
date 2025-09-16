@@ -1,94 +1,89 @@
 import { apiService } from './api';
 
-// Trip interfaces
+// Trip interfaces matching backend MongoDB schema
+export interface TripPoint {
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+  accuracy: number;
+}
+
 export interface Trip {
-  id: string;
-  title: string;
-  description?: string;
-  startLocation?: string;
-  endLocation?: string;
+  _id: string;
+  id?: string;
+  userId: string;
+  purpose: string;
+  startTime?: string;
+  endTime?: string;
   startOdometer: number;
   endOdometer?: number;
-  distance?: number;
-  status: 'active' | 'completed' | 'cancelled';
-  startTime: string;
-  endTime?: string;
-  route: RoutePoint[];
-  totalExpenses?: number;
-  businessPurpose: string;
+  startLocation?: string;
+  endLocation?: string;
+  distance: number;
+  duration: number;
+  route: TripPoint[];
+  status: 'active' | 'completed';
+  averageSpeed: number;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface RoutePoint {
-  latitude: number;
-  longitude: number;
-  timestamp: string;
-  speed?: number;
-  accuracy?: number;
-}
-
 // Trip request interfaces
 export interface CreateTripRequest {
-  title: string;
-  description?: string;
-  startLocation?: string;
+  purpose: string;
   startOdometer: number;
-  businessPurpose: string;
+  route?: TripPoint[];
 }
 
 export interface UpdateTripRequest {
-  title?: string;
-  description?: string;
+  route?: TripPoint[];
+  startLocation?: string;
   endLocation?: string;
-  endOdometer?: number;
-  businessPurpose?: string;
 }
 
-export interface AddRoutePointRequest {
-  latitude: number;
-  longitude: number;
-  speed?: number;
-  accuracy?: number;
+export interface EndTripRequest {
+  endOdometer: number;
+  endLocation?: string;
 }
 
 class TripService {
   // Get all trips for the current user
-  async getAllTrips() {
-    return await apiService.get<Trip[]>('/trips');
+  async getAllTrips(status?: 'active' | 'completed', limit = 50, page = 1) {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    params.append('limit', limit.toString());
+    params.append('page', page.toString());
+    
+    const queryString = params.toString();
+    const endpoint = queryString ? `/trips?${queryString}` : '/trips';
+    
+    return await apiService.get<{
+      data: Trip[];
+      count: number;
+      total: number;
+      page: number;
+      pages: number;
+    }>(endpoint);
   }
 
   // Get a specific trip by ID
   async getTripById(tripId: string) {
-    return await apiService.get<Trip>(`/trips/${tripId}`);
+    return await apiService.get<{ data: Trip }>(`/trips/${tripId}`);
   }
 
   // Create a new trip
   async createTrip(tripData: CreateTripRequest) {
-    return await apiService.post<Trip>('/trips', tripData);
+    return await apiService.post<{ data: Trip }>('/trips', tripData);
   }
 
-  // Update an existing trip
+  // Update an existing trip (mainly for adding GPS points)
   async updateTrip(tripId: string, updateData: UpdateTripRequest) {
-    return await apiService.put<Trip>(`/trips/${tripId}`, updateData);
+    return await apiService.put<{ data: Trip }>(`/trips/${tripId}`, updateData);
   }
 
-  // Add a route point to an active trip
-  async addRoutePoint(tripId: string, routePoint: AddRoutePointRequest) {
-    return await apiService.post<Trip>(`/trips/${tripId}/route`, routePoint);
-  }
-
-  // Complete a trip
-  async completeTrip(tripId: string, endLocation?: string, endOdometer?: number) {
-    return await apiService.post<Trip>(`/trips/${tripId}/complete`, {
-      endLocation,
-      endOdometer
-    });
-  }
-
-  // Cancel a trip
-  async cancelTrip(tripId: string) {
-    return await apiService.post<Trip>(`/trips/${tripId}/cancel`);
+  // End a trip
+  async endTrip(tripId: string, endData: EndTripRequest) {
+    return await apiService.put<{ data: Trip }>(`/trips/${tripId}/end`, endData);
   }
 
   // Delete a trip
@@ -98,17 +93,22 @@ class TripService {
 
   // Get active trip (if any)
   async getActiveTrip() {
-    const result = await apiService.get<Trip[]>('/trips?status=active');
-    if (result.success && result.data && result.data.length > 0) {
+    const result = await this.getAllTrips('active', 1);
+    if (result.success && result.data && result.data.data.length > 0) {
       return {
         success: true,
-        data: result.data[0]
+        data: result.data.data[0]
       };
     }
     return {
       success: true,
       data: null
     };
+  }
+
+  // Batch update GPS points for active trip
+  async updateGPSPoints(tripId: string, points: TripPoint[]) {
+    return await this.updateTrip(tripId, { route: points });
   }
 }
 

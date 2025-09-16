@@ -1,6 +1,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const UserData = require('../models/UserData');
 const { protect } = require('../middleware/auth');
 
 const router = express.Router();
@@ -45,9 +46,16 @@ const register = async (req, res) => {
 
     // Create user
     const user = await User.create({
-      name: name.trim(),
+      fullName: name.trim(),
       email: email.toLowerCase().trim(),
       password
+    });
+
+    // Create initial user data
+    await UserData.create({
+      userId: user._id,
+      currentOdometer: 0,
+      activeTrip: null
     });
 
     // Generate token
@@ -58,7 +66,7 @@ const register = async (req, res) => {
       token,
       user: {
         id: user._id,
-        name: user.name,
+        name: user.fullName,
         email: user.email
       }
     });
@@ -114,7 +122,7 @@ const login = async (req, res) => {
       token,
       user: {
         id: user._id,
-        name: user.name,
+        name: user.fullName,
         email: user.email
       }
     });
@@ -138,7 +146,7 @@ const getMe = async (req, res) => {
       success: true,
       user: {
         id: user._id,
-        name: user.name,
+        name: user.fullName,
         email: user.email
       }
     });

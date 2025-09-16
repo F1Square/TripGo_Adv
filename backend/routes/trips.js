@@ -116,6 +116,9 @@ const createTrip = async (req, res) => {
     });
   } catch (error) {
     console.error('Create trip error:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Request body:', req.body);
+    console.error('User ID:', req.user?.id);
     res.status(500).json({
       success: false,
       error: 'Server error while creating trip'
@@ -212,7 +215,7 @@ const endTrip = async (req, res) => {
     }
 
     // Update trip
-    trip.endDate = new Date();
+    trip.endTime = new Date();
     trip.endOdometer = Number(endOdometer);
     trip.status = 'completed';
     if (endLocation) {
