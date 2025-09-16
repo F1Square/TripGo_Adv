@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { authService, type User } from '../services/authService';
+import { preloadCriticalComponents } from '../utils/componentPreloader';
 
 interface AuthState {
   user: User | null;
@@ -25,6 +26,8 @@ export const useAuth = () => {
         isAuthenticated: true,
         isLoading: false,
       });
+      // Preload critical components for authenticated users
+      preloadCriticalComponents();
     } else {
       setAuth({
         user: null,

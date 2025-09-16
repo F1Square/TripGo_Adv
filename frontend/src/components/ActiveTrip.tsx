@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,7 +21,19 @@ import {
 import { useTrip } from '@/hooks/useTrip';
 import { useGeolocation } from '@/hooks/useGeolocation';
 import { useToast } from '@/hooks/use-toast';
-import TripMap from './TripMap';
+
+// Lazy load the heavy TripMap component
+const TripMap = React.lazy(() => import('./TripMap'));
+
+// Map loading component
+const MapLoader = () => (
+  <div className="h-64 w-full rounded-b-lg overflow-hidden bg-muted/50 flex items-center justify-center">
+    <div className="flex items-center space-x-2">
+      <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+      <span className="text-sm text-muted-foreground">Loading map...</span>
+    </div>
+  </div>
+);
 
 const ActiveTrip = () => {
   const { currentTrip, endTrip } = useTrip();
@@ -307,13 +319,15 @@ const ActiveTrip = () => {
           </Button>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="h-64 w-full rounded-b-lg overflow-hidden">
-            <TripMap 
-              trip={currentTrip}
-              currentPosition={position}
-              height="256px"
-            />
-          </div>
+          <Suspense fallback={<MapLoader />}>
+            <div className="h-64 w-full rounded-b-lg overflow-hidden">
+              <TripMap 
+                trip={currentTrip}
+                currentPosition={position}
+                height="256px"
+              />
+            </div>
+          </Suspense>
         </CardContent>
       </Card>
 
@@ -393,14 +407,16 @@ const ActiveTrip = () => {
       {/* Fullscreen Map Modal */}
       <Dialog open={isMapFullscreen} onOpenChange={setIsMapFullscreen}>
         <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full p-0">
-          <div className="h-full w-full">
-            <TripMap 
-              trip={currentTrip}
-              currentPosition={position}
-              height="100%"
-              fullscreen
-            />
-          </div>
+          <Suspense fallback={<MapLoader />}>
+            <div className="h-full w-full">
+              <TripMap 
+                trip={currentTrip}
+                currentPosition={position}
+                height="100%"
+                fullscreen
+              />
+            </div>
+          </Suspense>
         </DialogContent>
       </Dialog>
     </div>

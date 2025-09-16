@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { authService } from '@/services/authService';
 
-const UserProfile: React.FC = () => {
+const UserProfile: React.FC = React.memo(() => {
   const { user, logout } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -170,6 +170,8 @@ const UserProfile: React.FC = () => {
         </div>
     </div>
   );
-};
+});
+
+UserProfile.displayName = 'UserProfile';
 
 export default UserProfile;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,9 +16,21 @@ import {
 import { useTrip } from '@/hooks/useTrip';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
-import TripMap from './TripMap';
 
-const TripHistory = () => {
+// Lazy load the heavy TripMap component
+const TripMap = React.lazy(() => import('./TripMap'));
+
+// Map loading component
+const MapLoader = () => (
+  <div className="h-64 w-full rounded-lg overflow-hidden border border-border bg-muted/50 flex items-center justify-center">
+    <div className="flex items-center space-x-2">
+      <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+      <span className="text-sm text-muted-foreground">Loading map...</span>
+    </div>
+  </div>
+);
+
+const TripHistory = React.memo(() => {
   const { tripHistory, deleteTrip, exportTripsToCSV } = useTrip();
   const { toast } = useToast();
   
@@ -275,13 +287,15 @@ const TripHistory = () => {
                 {/* Route Map */}
                 <div>
                   <h4 className="font-semibold text-foreground mb-4">Route Map</h4>
-                  <div className="h-64 w-full rounded-lg overflow-hidden border border-border">
-                    <TripMap 
-                      trip={selectedTrip}
-                      height="256px"
-                      showFullRoute
-                    />
-                  </div>
+                  <Suspense fallback={<MapLoader />}>
+                    <div className="h-64 w-full rounded-lg overflow-hidden border border-border">
+                      <TripMap 
+                        trip={selectedTrip}
+                        height="256px"
+                        showFullRoute
+                      />
+                    </div>
+                  </Suspense>
                 </div>
               </div>
             </>
@@ -316,6 +330,8 @@ const TripHistory = () => {
       </Dialog>
     </div>
   );
-};
+});
+
+TripHistory.displayName = 'TripHistory';
 
 export default TripHistory;

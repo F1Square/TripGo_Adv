@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useGeolocation } from './useGeolocation';
 import { tripService, Trip, TripPoint } from '../services/tripService';
+import { preloadMapComponents } from '../utils/componentPreloader';
+import { throttle } from '../utils/performance';
 
 // Import wake lock types
 /// <reference path="../types/wakelock.d.ts" />
@@ -200,6 +202,9 @@ export const useTrip = () => {
       }
 
       startTracking();
+
+      // Preload map components for active trip
+      preloadMapComponents();
 
       // Request wake lock to keep screen active during trip
       try {

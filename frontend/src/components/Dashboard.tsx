@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,10 +21,22 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useTrip } from '@/hooks/useTrip';
 import { useToast } from '@/hooks/use-toast';
-import NewTripForm from './NewTripForm';
-import ActiveTrip from './ActiveTrip';
-import TripHistory from './TripHistory';
-import UserProfile from './UserProfile';
+
+// Lazy loaded heavy components
+const NewTripForm = React.lazy(() => import('./NewTripForm'));
+const ActiveTrip = React.lazy(() => import('./ActiveTrip'));
+const TripHistory = React.lazy(() => import('./TripHistory'));
+const UserProfile = React.lazy(() => import('./UserProfile'));
+
+// Component loading spinner
+const ComponentLoader = () => (
+  <div className="flex items-center justify-center p-8">
+    <div className="flex items-center space-x-2">
+      <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+      <span className="text-sm text-muted-foreground">Loading...</span>
+    </div>
+  </div>
+);
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -189,7 +201,11 @@ const Dashboard = () => {
         </div>
 
         {/* Active Trip Section */}
-        {isActive && <ActiveTrip />}
+        {isActive && (
+          <Suspense fallback={<ComponentLoader />}>
+            <ActiveTrip />
+          </Suspense>
+        )}
 
         {/* Main Content - Always Show Tabs */}
         <Card className="glass-card">
@@ -213,11 +229,17 @@ const Dashboard = () => {
             </TabsList>
 
             <TabsContent value="new-trip" className="mt-6">
-              {!isActive && <NewTripForm currentOdometer={Number(currentOdometer)} />}
+              {!isActive && (
+                <Suspense fallback={<ComponentLoader />}>
+                  <NewTripForm currentOdometer={Number(currentOdometer)} />
+                </Suspense>
+              )}
             </TabsContent>
 
             <TabsContent value="history" className="mt-6">
-              <TripHistory />
+              <Suspense fallback={<ComponentLoader />}>
+                <TripHistory />
+              </Suspense>
             </TabsContent>
           </Tabs>
         </Card>
@@ -231,7 +253,9 @@ const Dashboard = () => {
                 <span>User Profile</span>
               </DialogTitle>
             </DialogHeader>
-            <UserProfile />
+            <Suspense fallback={<ComponentLoader />}>
+              <UserProfile />
+            </Suspense>
           </DialogContent>
         </Dialog>
       </div>
